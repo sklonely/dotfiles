@@ -5,9 +5,8 @@
   3) 執行 windows/scripts/install.ps1 → settings_install.ps1
   4) 自動套用設定、自啟 GlazeWM、重啟 WM
 
-用法：
-  以系統管理員 PowerShell 執行：
-    irm https://raw.githubusercontent.com/sklonely/dotfiles/main/windows/bootstrap.ps1 | iex
+用法（系統管理員 PowerShell 建議）：
+  irm https://raw.githubusercontent.com/sklonely/dotfiles/main/windows/bootstrap.ps1 | iex
 #>
 
 param(
@@ -23,11 +22,17 @@ function Info($m){ Write-Host "INFO  $m" -ForegroundColor Cyan }
 function Warn($m){ Write-Host "WARN  $m" -ForegroundColor Yellow }
 function Ok($m){ Write-Host "OK    $m" -ForegroundColor Green }
 
-# --- 提權 ---
-if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()
-).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
+# --- 提權（避免使用 ?:，改用參數陣列） ---
+$principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
   Info "以管理員權限重新啟動 bootstrap.ps1..."
-  Start-Process -FilePath "powershell.exe" -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -Branch `"$Branch`" $([string]::Join(' ', ($ApplyDotfiles ? '-ApplyDotfiles' : '')))" -Verb RunAs
+  $argList = @(
+    '-NoProfile','-ExecutionPolicy','Bypass',
+    '-File', ('"{0}"' -f $PSCommandPath),
+    '-Branch', ('"{0}"' -f $Branch)
+  )
+  if ($ApplyDotfiles) { $argList += '-ApplyDotfiles' }
+  Start-Process -FilePath 'powershell.exe' -ArgumentList $argList -Verb RunAs
   exit
 }
 
@@ -41,7 +46,7 @@ if (-not (Has-Cmd "git")) {
   try {
     winget install --id Git.Git -e --accept-package-agreements --accept-source-agreements
   } catch {
-    Warn "winget 安裝 Git 失敗，請手動安裝後再重試。"
+    Warn "winget 安裝 Git 失敗，請手動安裝 Git 後再重試。"
     throw
   }
 } else { Ok "Git 已存在。" }
@@ -53,7 +58,7 @@ $RepoPath = Join-Path $RepoRoot "dotfiles"
 New-Item -ItemType Directory -Force -Path $RepoRoot | Out-Null
 
 if (-not (Test-Path $RepoPath)) {
-  Info "Clone：$RepoUrl → $RepoPath（$Branch）"
+  Info ("Clone：{0} → {1}（{2}）" -f $RepoUrl, $RepoPath, $Branch)
   git clone --branch $Branch --depth 1 $RepoUrl $RepoPath
 } else {
   Info "更新：$RepoPath"
@@ -76,8 +81,9 @@ Write-Host "`n=== [1/2] 執行 install.ps1 ===`n" -ForegroundColor Magenta
 if ($LASTEXITCODE -ne 0) { throw "install.ps1 執行失敗" }
 
 Write-Host "`n=== [2/2] 執行 settings_install.ps1 ===`n" -ForegroundColor Magenta
-$args = @("-DotfilesRepoPath", $RepoPath, "-ApplyDotfiles")
-& $SettingsScript @args
+$settingsArgs = @('-DotfilesRepoPath', $RepoPath)
+if ($ApplyDotfiles) { $settingsArgs += '-ApplyDotfiles' }
+& $SettingsScript @settingsArgs
 if ($LASTEXITCODE -ne 0) { throw "settings_install.ps1 執行失敗" }
 
 Ok "`n✅ 完成！GlazeWM 與 Zebar 已設定自啟。"
