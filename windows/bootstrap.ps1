@@ -25,14 +25,14 @@ function Ok($m){ Write-Host "OK    $m" -ForegroundColor Green }
 
 # ===== 常數 =====
 $RepoUrl  = "https://github.com/sklonely/dotfiles.git"
-$HOME     = $env:USERPROFILE
-$RepoRoot = Join-Path $HOME "dev"
+$HomeDir     = $env:USERPROFILE
+$RepoRoot = Join-Path $HomeDir "dev"
 $RepoPath = Join-Path $RepoRoot "dotfiles"
 
 # ===== 日誌檔 =====
 if (-not $LogPath -or [string]::IsNullOrWhiteSpace($LogPath)) {
   $stamp = Get-Date -Format "yyyyMMdd_HHmmss"
-  $LogPath = Join-Path $HOME ("bootstrap_{0}.log" -f $stamp)
+  $LogPath = Join-Path $HomeDir ("bootstrap_{0}.log" -f $stamp)
 }
 try {
   # 若已經在 Transcript 中，避免重複開啟報錯
