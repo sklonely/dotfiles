@@ -14,7 +14,7 @@ param(
   [switch]$PreferZip
 )
 
-$ErrorActionPreference = 'Stop'
+# $ErrorActionPreference = 'Stop'
 
 function Has-Cmd($n){ [bool](Get-Command $n -ErrorAction SilentlyContinue) }
 function Info($m){ Write-Host "INFO  $m" -ForegroundColor Cyan }
