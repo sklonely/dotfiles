@@ -1,18 +1,20 @@
 <# bootstrap.ps1
-- 記錄日誌、可提權、錯誤停留
-- 取得 repo：優先 Git；失敗→下載 ZIP（無需 Git）
-- 執行：windows/scripts/install.ps1 → settings_install.ps1
-用法（建議管理員）：irm https://raw.githubusercontent.com/sklonely/dotfiles/main/windows/bootstrap.ps1 | iex
+- 記錄日誌、支援 irm|iex、自動提權（ArgumentList 單一字串）、錯誤暫停
+- 取得 repo：Git 優先；失敗→下載 ZIP（無需 Git）
+- 執行：windows/scripts/install.ps1 → windows/scripts/settings_install.ps1
+用法（建議以系統管理員 PowerShell）：
+  irm https://raw.githubusercontent.com/sklonely/dotfiles/main/windows/bootstrap.ps1 | iex
 #>
 
 param(
   [string]$Branch = "main",
   [switch]$ApplyDotfiles,
   [string]$LogPath,
-  [switch]$PreferZip   # 可選：強制走 ZIP（跳過 Git）
+  [switch]$PreferZip   # 強制走 ZIP（不使用 Git）
 )
 
 $ErrorActionPreference = 'Stop'
+
 function Has-Cmd($n){ [bool](Get-Command $n -ErrorAction SilentlyContinue) }
 function Info($m){ Write-Host "INFO  $m" -ForegroundColor Cyan }
 function Warn($m){ Write-Host "WARN  $m" -ForegroundColor Yellow }
@@ -39,26 +41,26 @@ try {
   }
 } catch { Warn ("Start-Transcript 失敗：{0}" -f $_.Exception.Message) }
 
-# 提權（支援 irm|iex：沒實體檔就先下載到 TEMP 再提權）
+# ===== 提權（WinPS 5.1 相容：ArgumentList 用「單一字串」，支援 irm|iex） =====
 try {
   $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
   if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Info "以管理員權限重新啟動 bootstrap.ps1…"
+
+    # 若是從 irm|iex 執行，$PSCommandPath 為空 → 先下載自身到 TEMP
     $selfPath = $PSCommandPath
     if ([string]::IsNullOrWhiteSpace($selfPath)) {
       $selfPath = Join-Path $env:TEMP "bootstrap.ps1"
       Info "下載自身腳本到暫存：$selfPath"
       Invoke-WebRequest -UseBasicParsing -Uri $RawSelf -OutFile $selfPath
     }
-    $argList = @(
-      '-NoProfile','-ExecutionPolicy','Bypass',
-      '-File', $selfPath,
-      '-Branch', $Branch,
-      '-LogPath', $LogPath
-    )
-    if ($ApplyDotfiles) { $argList += '-ApplyDotfiles' }
-    if ($PreferZip)     { $argList += '-PreferZip' }
-    Start-Process -FilePath 'powershell.exe' -ArgumentList $argList -Verb RunAs
+
+    # 重要：-ArgumentList 使用「單一字串」，自行處理引號與空白（WinPS 5.1 的可靠作法）
+    $arg = "-NoProfile -ExecutionPolicy Bypass -File `"$selfPath`" -Branch `"$Branch`" -LogPath `"$LogPath`""
+    if ($ApplyDotfiles) { $arg += " -ApplyDotfiles" }
+    if ($PreferZip)     { $arg += " -PreferZip" }
+
+    Start-Process -FilePath 'powershell.exe' -ArgumentList $arg -Verb RunAs
     exit
   }
 } catch { Warn ("提權檢查/重啟失敗：{0}" -f $_.Exception.Message) }
@@ -69,7 +71,7 @@ try {
   [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
   New-Item -ItemType Directory -Force -Path $RepoRoot | Out-Null
 
-  # --- 取得/更新 repo：Git 優先；失敗→ZIP ---
+  # --- 取得/更新 repo：Git 優先；失敗→ZIP 後援 ---
   $gotRepo = $false
   if (-not $PreferZip) {
     if (Has-Cmd "git") {
@@ -95,7 +97,6 @@ try {
   }
 
   if (-not $gotRepo) {
-    # ZIP 下載與解壓
     $tmp = Join-Path $env:TEMP ("dotfiles_{0}" -f ([System.Guid]::NewGuid().ToString("N")))
     $zip = "$tmp.zip"
     $ext = "$tmp"
@@ -103,21 +104,18 @@ try {
     Invoke-WebRequest -UseBasicParsing -Uri $ZipUrl -OutFile $zip
     Info ("解壓到：{0}" -f $ext)
     Expand-Archive -Path $zip -DestinationPath $ext -Force
-    # GitHub 檔名會是 dotfiles-<branch>
+    # GitHub zip 解壓通常為 dotfiles-<branch>
     $unz = Join-Path $ext ("dotfiles-{0}" -f $Branch)
     if (-not (Test-Path $unz)) {
-      # branch 不是 main 時，名稱可能不同；抓第一個子資料夾兜底
       $dirs = Get-ChildItem $ext -Directory | Select-Object -First 1
       if ($dirs) { $unz = $dirs.FullName }
     }
     if (-not (Test-Path $unz)) { throw "ZIP 解壓後找不到 repo 內容。" }
 
-    # 覆蓋到 $RepoPath（保留目標目錄，覆寫檔案）
     New-Item -ItemType Directory -Force -Path $RepoPath | Out-Null
     Info ("同步檔案到 {0}" -f $RepoPath)
     robocopy $unz $RepoPath /MIR /NFL /NDL /NJH /NJS /NP | Out-Null
 
-    # 清理
     Remove-Item $zip -Force -ErrorAction SilentlyContinue
     Remove-Item $ext -Recurse -Force -ErrorAction SilentlyContinue
     $gotRepo = $true
