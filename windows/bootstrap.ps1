@@ -5,7 +5,7 @@
 用法（建議以系統管理員 PowerShell）：
   irm https://raw.githubusercontent.com/sklonely/dotfiles/main/windows/bootstrap.ps1 | iex
 #>
-
+$ErrorActionPreference = 'Continue'
 param(
   [string]$Branch = "main",
   [switch]$ApplyDotfiles,
