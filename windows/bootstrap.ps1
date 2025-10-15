@@ -6,11 +6,12 @@
   irm https://raw.githubusercontent.com/sklonely/dotfiles/main/windows/bootstrap.ps1 | iex
 #>
 $ErrorActionPreference = 'Continue'
+function Main {
 param(
   [string]$Branch = "main",
   [switch]$ApplyDotfiles,
   [string]$LogPath,
-  [switch]$PreferZip   # 強制走 ZIP（不使用 Git）
+  [switch]$PreferZip
 )
 
 $ErrorActionPreference = 'Stop'
@@ -20,7 +21,7 @@ function Info($m){ Write-Host "INFO  $m" -ForegroundColor Cyan }
 function Warn($m){ Write-Host "WARN  $m" -ForegroundColor Yellow }
 function Ok($m){ Write-Host "OK    $m" -ForegroundColor Green }
 
-# 常數
+# === 常數設定 ===
 $RepoUrl   = "https://github.com/sklonely/dotfiles.git"
 $RawSelf   = "https://raw.githubusercontent.com/sklonely/dotfiles/$Branch/windows/bootstrap.ps1"
 $HomeDir   = $env:USERPROFILE
@@ -28,7 +29,7 @@ $RepoRoot  = Join-Path $HomeDir "dev"
 $RepoPath  = Join-Path $RepoRoot "dotfiles"
 $ZipUrl    = "https://github.com/sklonely/dotfiles/archive/refs/heads/$Branch.zip"
 
-# 日誌
+# === 日誌 ===
 if (-not $LogPath -or [string]::IsNullOrWhiteSpace($LogPath)) {
   $stamp = Get-Date -Format "yyyyMMdd_HHmmss"
   $LogPath = Join-Path $HomeDir ("bootstrap_{0}.log" -f $stamp)
@@ -41,13 +42,12 @@ try {
   }
 } catch { Warn ("Start-Transcript 失敗：{0}" -f $_.Exception.Message) }
 
-# ===== 提權（WinPS 5.1 相容：ArgumentList 用「單一字串」，支援 irm|iex） =====
+# === 提權 (相容 irm|iex 情境) ===
 try {
   $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
   if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Info "以管理員權限重新啟動 bootstrap.ps1…"
 
-    # 若是從 irm|iex 執行，$PSCommandPath 為空 → 先下載自身到 TEMP
     $selfPath = $PSCommandPath
     if ([string]::IsNullOrWhiteSpace($selfPath)) {
       $selfPath = Join-Path $env:TEMP "bootstrap.ps1"
@@ -55,8 +55,8 @@ try {
       Invoke-WebRequest -UseBasicParsing -Uri $RawSelf -OutFile $selfPath
     }
 
-    # 重要：-ArgumentList 使用「單一字串」，自行處理引號與空白（WinPS 5.1 的可靠作法）
-    $arg = "-NoProfile -ExecutionPolicy Bypass -File `"$selfPath`" -Branch `"$Branch`" -LogPath `"$LogPath`""
+    # 使用雙雙引號防止 PowerShell 5.1 語法錯誤
+    $arg = "-NoProfile -ExecutionPolicy Bypass -File ""$selfPath"" -Branch ""$Branch"" -LogPath ""$LogPath"""
     if ($ApplyDotfiles) { $arg += " -ApplyDotfiles" }
     if ($PreferZip)     { $arg += " -PreferZip" }
 
@@ -65,14 +65,15 @@ try {
   }
 } catch { Warn ("提權檢查/重啟失敗：{0}" -f $_.Exception.Message) }
 
-# 主流程
+# === 主流程 ===
 try {
   try { Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force } catch {}
   [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
   New-Item -ItemType Directory -Force -Path $RepoRoot | Out-Null
 
-  # --- 取得/更新 repo：Git 優先；失敗→ZIP 後援 ---
   $gotRepo = $false
+
+  # --- Git 優先 ---
   if (-not $PreferZip) {
     if (Has-Cmd "git") {
       try {
@@ -88,14 +89,13 @@ try {
           Pop-Location
         }
         $gotRepo = $true
-      } catch {
-        Warn ("Git 取得失敗：{0}" -f $_.Exception.Message)
-      }
+      } catch { Warn ("Git 取得失敗：{0}" -f $_.Exception.Message) }
     } else {
       Warn "未安裝 Git，改用 ZIP 模式。"
     }
   }
 
+  # --- ZIP 後援 ---
   if (-not $gotRepo) {
     $tmp = Join-Path $env:TEMP ("dotfiles_{0}" -f ([System.Guid]::NewGuid().ToString("N")))
     $zip = "$tmp.zip"
@@ -104,7 +104,7 @@ try {
     Invoke-WebRequest -UseBasicParsing -Uri $ZipUrl -OutFile $zip
     Info ("解壓到：{0}" -f $ext)
     Expand-Archive -Path $zip -DestinationPath $ext -Force
-    # GitHub zip 解壓通常為 dotfiles-<branch>
+
     $unz = Join-Path $ext ("dotfiles-{0}" -f $Branch)
     if (-not (Test-Path $unz)) {
       $dirs = Get-ChildItem $ext -Directory | Select-Object -First 1
@@ -118,7 +118,6 @@ try {
 
     Remove-Item $zip -Force -ErrorAction SilentlyContinue
     Remove-Item $ext -Recurse -Force -ErrorAction SilentlyContinue
-    $gotRepo = $true
     Ok "已透過 ZIP 取得 repo。"
   }
 
@@ -159,3 +158,8 @@ finally {
     }
   } catch {}
 }
+
+} # ← Main 結尾
+
+# === 啟動入口 ===
+Main @args
