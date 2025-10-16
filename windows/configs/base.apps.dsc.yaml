@@ -1,0 +1,57 @@
+# WinGet Configuration v0.2 — 基本應用安裝
+# 執行：winget configure -f windows\configs\base.apps.dsc.yaml --accept-configuration-agreements
+manifestVersion: 0.2.0
+properties:
+  configurationVersion: 1.0.0
+
+# 注意：某些套件需要管理員。bootstrap 已提權。
+resources:
+  - resource: Microsoft.WinGet.DSC/WinGetPackage
+    id: Git
+    directives: { description: "Install Git" }
+    settings:
+      id: Git.Git
+      source: winget
+
+  - resource: Microsoft.WinGet.DSC/WinGetPackage
+    id: OnePassword
+    directives: { description: "Install 1Password" }
+    settings:
+      id: AgileBits.1Password
+      source: winget
+
+  - resource: Microsoft.WinGet.DSC/WinGetPackage
+    id: UV
+    directives: { description: "Install uv (Python toolchain manager)" }
+    settings:
+      id: Astral.UV
+      source: winget
+
+  - resource: Microsoft.WinGet.DSC/WinGetPackage
+    id: GlazeWM
+    directives: { description: "Install GlazeWM" }
+    settings:
+      id: GlazeWM.GlazeWM
+      source: winget
+
+  - resource: Microsoft.WinGet.DSC/WinGetPackage
+    id: FlowLauncher
+    directives: { description: "Install Flow Launcher" }
+    settings:
+      id: Flow-Launcher.Flow-Launcher
+      source: winget
+
+  - resource: Microsoft.WinGet.DSC/WinGetPackage
+    id: Discord
+    directives: { description: "Install Discord" }
+    settings:
+      id: Discord.Discord
+      source: winget
+
+  # ChatGPT 的 ID 可能因地區不同，先嘗試 OpenAI.ChatGPT
+  - resource: Microsoft.WinGet.DSC/WinGetPackage
+    id: ChatGPT
+    directives: { description: "Install ChatGPT (store)" }
+    settings:
+      id: OpenAI.ChatGPT
+      source: winget
